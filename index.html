@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aisle Order — sort your list, not your steps</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+  :root{
+    --paper:#FBF7EE;
+    --paper-dim:#F2ECDD;
+    --ink:#26241F;
+    --green:#1F4D36;
+    --green-light:#2E6E4E;
+    --yellow:#F0B429;
+    --yellow-deep:#D89412;
+    --line:#D9D0BB;
+    --red:#B3452C;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper-dim);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:560px;margin:0 auto;min-height:100vh;background:var(--paper);box-shadow:0 0 60px rgba(0,0,0,0.06);position:relative;}
+
+  /* HEADER — hanging aisle sign */
+  header{
+    background:var(--green);
+    color:var(--paper);
+    padding:28px 24px 22px;
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute; left:0; right:0; bottom:-1px; height:10px;
+    background:repeating-linear-gradient(135deg,var(--yellow) 0 10px,var(--yellow-deep) 10px 20px);
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--yellow); margin:0 0 8px;
+  }
+  h1{
+    font-family:'Archivo Black',sans-serif;
+    font-size:34px; line-height:1.02; margin:0 0 6px; letter-spacing:-0.01em;
+  }
+  header p{margin:0; font-size:14.5px; color:#DCE9DF; max-width:38ch;}
+
+  main{padding:22px 24px 80px;}
+
+  .section{margin-bottom:26px;}
+  .section-label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--green-light); margin:0 0 10px; font-weight:600;
+  }
+
+  select, textarea, input[type=text]{
+    width:100%; font-family:'IBM Plex Sans',sans-serif; font-size:15px;
+    border:2px solid var(--ink); border-radius:2px; background:var(--paper);
+    padding:11px 12px; color:var(--ink);
+  }
+  textarea{resize:vertical; min-height:110px; line-height:1.5;}
+  select{appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path fill='%2326241F' d='M5 7l5 6 5-6z'/></svg>"); background-repeat:no-repeat; background-position:right 12px center; padding-right:34px;}
+
+  .btn{
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px;
+    letter-spacing:.06em; text-transform:uppercase;
+    border:2px solid var(--ink); background:var(--yellow); color:var(--ink);
+    padding:13px 18px; border-radius:2px; cursor:pointer; width:100%;
+    transition:transform .08s ease;
+  }
+  .btn:active{transform:scale(.985);}
+  .btn.secondary{background:var(--paper); color:var(--green);}
+  .btn.small{width:auto; padding:8px 14px; font-size:11.5px;}
+  .btn.ghost{background:transparent;border:1.5px dashed var(--line);color:var(--ink);}
+
+  /* RECEIPT-STYLE OUTPUT */
+  .receipt{
+    background:var(--paper); border:1.5px solid var(--ink);
+    margin-top:6px;
+  }
+  .aisle-group{border-bottom:1px dashed var(--line);}
+  .aisle-group:last-child{border-bottom:none;}
+  .aisle-head{
+    display:flex; align-items:center; gap:10px;
+    background:var(--green); color:var(--paper);
+    padding:9px 14px;
+  }
+  .aisle-badge{
+    font-family:'Archivo Black',sans-serif; font-size:13px;
+    background:var(--yellow); color:var(--ink);
+    border-radius:50%; width:30px; height:30px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .aisle-name{font-size:13.5px; font-weight:600; letter-spacing:.02em;}
+  .item-row{
+    display:flex; align-items:center; gap:12px;
+    padding:11px 14px 11px 18px; border-top:1px solid var(--paper-dim);
+    font-size:15px;
+  }
+  .item-row:first-of-type{border-top:none;}
+  .item-row input[type=checkbox]{
+    width:19px;height:19px; accent-color:var(--green); flex-shrink:0;
+  }
+  .item-row.checked .item-name{text-decoration:line-through; color:#9A937F;}
+  .item-name{flex:1;}
+
+  .empty{
+    border:1.5px dashed var(--line); padding:26px 18px; text-align:center;
+    color:#8A8270; font-size:14px;
+  }
+
+  footer{
+    position:sticky; bottom:0; padding:14px 24px 22px; background:var(--paper);
+    border-top:1.5px solid var(--ink);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Category-sorted shopping list</p>
+    <h1>Aisle Order</h1>
+    <p>Paste your list. Get it back grouped in walking order.</p>
+  </header>
+
+  <main>
+    <div class="section">
+      <p class="section-label">01 — Your list</p>
+      <textarea id="listInput" placeholder="milk
+bananas
+chicken breast
+black beans
+frozen pizza
+paper towels
+eggs"></textarea>
+    </div>
+
+    <button class="btn" id="sortBtn">Sort my list</button>
+
+    <div class="section" style="margin-top:24px;">
+      <p class="section-label">02 — Your route</p>
+      <div id="output" class="receipt empty">Your sorted list will print here, grouped aisle by aisle.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ---- Tier 1: category dictionary & walk order ----
+const CATEGORY_ORDER = ['produce','bakery','deli','meat','dairy','frozen','pantry','household','checkout','other'];
+const CATEGORY_LABEL = {
+  produce:'Produce', bakery:'Bakery', deli:'Deli & Prepared',
+  meat:'Meat & Seafood', dairy:'Dairy & Eggs', frozen:'Frozen',
+  pantry:'Center Aisles (Pantry & Dry Goods)', household:'Household & Paper',
+  checkout:'Checkout (snacks, candy, batteries)', other:'Uncategorized'
+};
+const KEYWORDS = {
+  produce:['apple','banana','orange','lettuce','spinach','tomato','onion','potato','avocado','bell pepper','jalapeno','grape','berry','berries','strawberry','strawberries','blueberry','blueberries','raspberry','raspberries','lemon','lime','garlic','carrot','cucumber','broccoli','mushroom','cilantro','parsley','kale','celery','fruit','vegetable','basil','oregano','rosemary','thyme','mint','ginger root'],
+  bakery:['bread','bagel','tortilla','bun','roll','cake','muffin','croissant','donut','pastry'],
+  deli:['deli','rotisserie','sliced turkey','sliced ham','sandwich meat','prepared food','sushi'],
+  meat:['chicken','beef','pork','steak','bacon','sausage','ground meat','turkey','fish','salmon','shrimp','seafood','meat'],
+  dairy:['milk','cheese','yogurt','butter','egg','cream','sour cream','cottage cheese','almond milk','oat milk','coffee creamer'],
+  frozen:['frozen','ice cream','pizza','popsicle','frozen veg','frozen fruit'],
+  household:['paper towel','toilet paper','detergent','soap','dish','cleaner','trash bag','foil','plastic wrap','napkin','tissue','diaper','vitamin','medicine','pain reliever','pet food','dog food','cat food','litter'],
+  checkout:['candy','gum','chocolate bar','battery','magazine'],
+  pantry:['pasta','rice','bean','cereal','flour','sugar','oil','sauce','soup','canned','soda','chip','cracker','cookie','coffee','tea','spice','salt','pepper','peanut butter','jam','jelly','snack','water bottle','juice','quinoa','oat','almond','walnut','cashew','pecan','nut','granola','popcorn','sparkling water','soft drink','cola','cinnamon','paprika','cumin','vanilla extract','salsa','tortilla chip','mayo','ketchup','ranch','protein bar','gatorade','sports drink']
+};
+
+function matchesKeyword(lower, keyword){
+  // Boundary on both ends, with an optional s/es suffix so plurals still
+  // match (banana -> bananas, tomato -> tomatoes), but a short keyword like
+  // "tea" can no longer match inside an unrelated word like "teacher".
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('\\b' + escaped + '(es|s)?\\b', 'i').test(lower);
+}
+
+function categorize(item){
+  const lower = item.toLowerCase();
+  // Hard overrides: for compound dish names, the finished product decides
+  // the aisle, not whichever ingredient word inside it happens to be longest
+  // (e.g. "cream of mushroom soup" should not lose to "mushroom" -> produce).
+  if(matchesKeyword(lower,'soup') || matchesKeyword(lower,'broth') || matchesKeyword(lower,'bouillon')) return 'pantry';
+
+  let best = null; // {cat, keywordLength}
+  for(const cat of CATEGORY_ORDER){
+    const words = KEYWORDS[cat];
+    if(!words) continue;
+    for(const w of words){
+      if(!matchesKeyword(lower, w)) continue;
+      const better = !best
+        || w.length > best.len
+        || (w.length === best.len && CATEGORY_ORDER.indexOf(cat) < CATEGORY_ORDER.indexOf(best.cat));
+      if(better) best = {cat, len:w.length};
+    }
+  }
+  return best ? best.cat : 'other';
+}
+
+// ---- sorting & rendering ----
+function sortGeneric(items){
+  const groups = {};
+  items.forEach(item=>{
+    const cat = categorize(item);
+    (groups[cat] = groups[cat] || []).push(item);
+  });
+  return CATEGORY_ORDER.filter(c=>groups[c]).map(c=>({
+    label: CATEGORY_LABEL[c], badge: CATEGORY_LABEL[c][0], items: groups[c]
+  }));
+}
+
+document.getElementById('sortBtn').addEventListener('click', ()=>{
+  const raw = document.getElementById('listInput').value;
+  const items = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const out = document.getElementById('output');
+  if(items.length===0){
+    out.className='receipt empty';
+    out.textContent='Add at least one item to sort.';
+    return;
+  }
+  const groups = sortGeneric(items);
+
+  out.className='receipt';
+  out.innerHTML='';
+  groups.forEach(g=>{
+    const wrap = document.createElement('div');
+    wrap.className='aisle-group';
+    const head = document.createElement('div');
+    head.className='aisle-head';
+    const badge = document.createElement('div');
+    badge.className='aisle-badge';
+    badge.textContent = g.badge;
+    const name = document.createElement('div');
+    name.className='aisle-name';
+    name.textContent = g.label;
+    head.appendChild(badge); head.appendChild(name);
+    wrap.appendChild(head);
+    g.items.forEach(item=>{
+      const row = document.createElement('label');
+      row.className='item-row';
+      const cb = document.createElement('input');
+      cb.type='checkbox';
+      const span = document.createElement('span');
+      span.className='item-name';
+      span.textContent = item;
+      row.appendChild(cb); row.appendChild(span);
+      cb.addEventListener('change', (e)=>{
+        row.classList.toggle('checked', e.target.checked);
+      });
+      wrap.appendChild(row);
+    });
+    out.appendChild(wrap);
+  });
+});
+</script>
+</body>
+</html>
