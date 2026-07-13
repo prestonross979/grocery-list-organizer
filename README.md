@@ -8,8 +8,6 @@
 
 ![Application Demo](screenshots/grocery-demo.gif)
 
-*(More screenshots — e.g. the loading state during Claude classification, before/after sorting — can go here.)*
-
 ---
 
 # Technical Highlights
