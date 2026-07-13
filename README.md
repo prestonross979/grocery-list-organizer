@@ -1,135 +1,106 @@
 # 🛒 Grocery List Organizer
 
-> An intelligent grocery list application that automatically organizes shopping lists by store department, making grocery shopping faster, more efficient, and far less frustrating.
+> An AI-powered grocery list organizer that sorts shopping lists into store departments in the order you'd actually walk through a store. Common items are categorized instantly by a local keyword system, while unfamiliar items are classified by Claude and cached so the same item is never sent to the API twice.
+
+---
+
+# Demo
+
+![Application Demo](screenshots/grocery-demo.gif)
+
+*(More screenshots — e.g. the loading state during Claude classification, before/after sorting — can go here.)*
+
+---
+
+# Technical Highlights
+
+- **Hybrid local + Claude AI categorization** — a keyword dictionary resolves common items instantly and for free; Claude is only consulted for items it can't classify.
+- **Batched API requests** — every unrecognized item from a single "Sort" click is sent in one request, not one per item, cutting both latency and cost.
+- **Browser-side caching** — classified items are stored in `localStorage`, so no item is ever sent to the API twice.
+- **Secure Cloudflare Worker proxy** — the Anthropic API key lives only as a Worker secret and never touches the browser.
+- **Graceful fallback** — if the Worker or the API is unreachable, unresolved items simply fall back to "Uncategorized" instead of breaking the app.
+- **Lightweight frontend** — vanilla HTML/CSS/JS, no framework, build step, or database.
+- **Zero API calls for recognized items** — the local dictionary handles the majority of everyday groceries without ever touching the network.
+
+---
+
+# Why AI?
+
+A local keyword dictionary is fast and free, but grocery items are effectively unbounded — no fixed list can keep up with every brand name, regional term, or unusual product a user might type. Maintaining a keyword list large enough to cover all of them would be impractical to build and a chore to maintain.
+
+Rather than go that route, this project calls Claude only when the local system genuinely can't determine a category. When that happens, every unknown item from a single sort is batched into one request instead of sent individually, and the result is cached in the browser so that item never needs to be classified again.
+
+The result is an architecture that minimizes both latency and API cost while still using AI exactly where it adds value — as a fallback for the long tail of items a static dictionary can't cover, not as a blanket solution applied to everything.
 
 ---
 
 # Overview
 
-Walking through a grocery store with a randomly ordered shopping list wastes time.
+Shopping with a randomly ordered list wastes time — produce, dairy, frozen, and household items end up scattered throughout the list, forcing repeated backtracking through the store.
 
-Many grocery list applications simply store items in the order they were entered, forcing shoppers to repeatedly backtrack through the store because produce, dairy, frozen foods, and household items are scattered throughout the list.
-
-Grocery List Organizer solves this problem by automatically categorizing every item into its appropriate grocery department, allowing users to shop in a logical order that follows the layout of most grocery stores.
-
-Instead of spending time reorganizing a shopping list manually, users can focus on shopping efficiently.
+Grocery List Organizer solves this by taking a pasted list and sorting it into the order most stores are laid out: produce and bakery first, frozen and household toward the end. It started as a simple personal frustration — every list I wrote became disorganized the moment I actually started shopping — and grew into an exploration of how to pair a fast, deterministic system with AI used only where it's actually needed.
 
 ---
 
-# The Problem
+# Features
 
-Traditional shopping lists have several common problems:
-
-- Items appear in random order
-- Users frequently forget products
-- Families struggle to keep shared shopping lists updated
-- Shopping takes longer because customers revisit aisles multiple times
-- Existing grocery apps often contain unnecessary complexity while still lacking practical organization
-
-Although grocery shopping is something millions of people do every week, many apps still overlook one simple improvement:
-
-**Organizing the list the same way people actually walk through a store.**
+- **Automatic department sorting** — paste a list, get it grouped into store departments in walking order: Produce, Bakery, Deli & Prepared, Meat & Seafood, Dairy & Eggs, Frozen, Pantry, Household & Paper, Checkout, and Uncategorized for anything unresolved.
+- **Hybrid categorization** — instant local keyword matching backed by Claude AI for anything the dictionary doesn't recognize. See [Architecture](#architecture).
+- **Check-off shopping** — check items off as you shop; edit the list and re-sort at any time.
+- **Zero-install, zero-account** — runs entirely in the browser, no downloads or sign-up required. Local sorting works fully offline; AI categorization needs a network connection to reach the Worker.
 
 ---
 
-# The Solution
+# Architecture
 
-Grocery List Organizer automatically groups shopping items into store departments as they are added.
+```
+User enters grocery list
+        │
+        ▼
+Local keyword categorization
+        │
+        ▼
+      Unknown?
+        │
+       Yes
+        │
+        ▼
+   Browser cache
+        │
+        ▼
+Claude API (Cloudflare Worker)
+        │
+        ▼
+ Cache result locally
+        │
+        ▼
+Future requests use cache
+```
 
-Rather than creating one long unorganized checklist, the application builds an optimized shopping list that minimizes unnecessary walking and improves the overall shopping experience.
+1. **User enters grocery list** — items are typed or pasted into the textarea, one per line.
+2. **Local keyword categorization** — each item is checked against a built-in keyword dictionary in `index.html`. Matches resolve instantly, for free, with no network call.
+3. **Unknown?** — anything the dictionary can't confidently place is treated as unresolved.
+4. **Browser cache** — unresolved items are checked against a `localStorage` cache of previously-classified items before anything is sent over the network.
+5. **Claude API (Cloudflare Worker)** — items still unresolved are batched into a single request to a Cloudflare Worker, which holds the Anthropic API key server-side and calls Claude Haiku.
+6. **Cache result locally** — Claude's classifications are written back into the `localStorage` cache.
+7. **Future requests use cache** — the next time any of those items appear in a list, they resolve from cache — no API call required.
 
-The application is designed around simplicity, speed, and practical usability.
-
----
-
-# Current Features
-
-## Automatic Department Sorting
-
-Items are automatically placed into categories such as:
-
-- Produce
-- Dairy
-- Meat & Seafood
-- Frozen Foods
-- Bakery
-- Pantry
-- Snacks
-- Beverages
-- Household Supplies
-- Health & Beauty
-- Miscellaneous
-
-No manual organization required.
-
----
-
-## Intelligent Categorization
-
-The application recognizes grocery items and places them into the appropriate department automatically.
-
-This creates a shopping list that more closely follows the natural flow of a grocery store.
-
-Categorization happens in three tiers, in order, so the Claude API is only ever used as a last resort:
-
-1. **Local keyword match** — a built-in dictionary in `index.html` handles common items instantly, for free, with no network call.
-2. **Local cache** — any item Claude has classified before is remembered in the browser's `localStorage` (keyed by a normalized form of the item name), so the same item is never sent to the API twice.
-3. **Claude API (Cloudflare Worker)** — only items that miss both of the above are sent, and every unrecognized item from a single "Sort" click is batched into **one** request rather than one request per item. If the Worker or the API is unreachable, those items simply fall back to "Uncategorized" — the app never breaks.
-
-The app still works with zero setup using just the local keyword dictionary (Tier 1). The AI tier is optional and only activates once the Cloudflare Worker is deployed and `CATEGORIZE_ENDPOINT` in `index.html` points to it — see [AI Setup](#ai-categorization-setup) below.
+If the Worker or the API is unreachable at any point, unresolved items simply fall back to "Uncategorized" rather than breaking the app.
 
 ---
 
-## Simple List Management
+# Technologies
 
-Users can:
-
-- Add grocery items
-- Remove items
-- Organize shopping lists
-- Quickly view departments
-- Reduce duplicate shopping trips
-
----
-
-## Lightweight Design
-
-The application runs entirely inside the browser without requiring:
-
-- User accounts
-- Downloads
-- Installation
-- Internet connectivity after loading
-
-Everything is designed to be quick and accessible.
-
----
-
-# Why I Built This
-
-This project began with a simple observation.
-
-Every grocery list I created eventually became disorganized.
-
-Even after writing everything down, I still found myself walking back and forth across the store because items were scattered randomly throughout the list.
-
-I wanted a shopping list that organized itself.
-
-Rather than creating another note-taking application, I focused on solving a specific everyday problem through automation.
-
-The result is a lightweight application that improves a routine task by eliminating unnecessary manual organization.
-
----
-
-# Technologies Used
-
+**Frontend**
 - HTML5
 - CSS3
-- Vanilla JavaScript (ES6)
-- Cloudflare Workers (serverless proxy for AI categorization)
-- Claude API (Haiku model) for classifying items the local keyword dictionary doesn't recognize
+- Vanilla JavaScript (ES6) — no framework, no build step
 
-The frontend (`index.html`) remains a lightweight browser-based application with no build step and no database. The only backend piece is a small Cloudflare Worker whose sole job is to hold the Anthropic API key server-side and forward batched classification requests — the Worker is optional and only needed if you want AI-assisted categorization.
+**Backend**
+- Cloudflare Workers — serverless proxy that holds the Anthropic API key
+- Claude API (Haiku model) — classifies items the local dictionary doesn't recognize
+
+The frontend is a single static file with no database. The only backend piece is a small Cloudflare Worker whose sole job is holding the API key server-side and forwarding batched classification requests — it's optional and only needed for AI-assisted categorization.
 
 ---
 
@@ -176,7 +147,7 @@ This prompts for the key and stores it as an encrypted Worker secret — it is n
 npm run deploy
 ```
 
-Wrangler prints your Worker's URL (e.g. `https://aisle-order-proxy.<your-subdomain>.workers.dev`). Update `CATEGORIZE_ENDPOINT` near the top of the `<script>` block in `index.html` to `https://aisle-order-proxy.<your-subdomain>.workers.dev/categorize`, then redeploy/host `index.html` wherever you like (it's still a static file).
+Wrangler prints your Worker's URL (e.g. `https://aisle-order-proxy.<your-subdomain>.workers.dev`). Update `CATEGORIZE_ENDPOINT` near the top of the `<script>` block in `index.html` to `https://aisle-order-proxy.<your-subdomain>.workers.dev/categorize`, then host `index.html` wherever you like (it's still a static file).
 
 ## 6. Test it
 
@@ -184,130 +155,6 @@ Wrangler prints your Worker's URL (e.g. `https://aisle-order-proxy.<your-subdoma
 - Add an unusual item (e.g. "kombucha") and sort — the button should briefly show a "Checking 1 unfamiliar item with Claude…" loading state, then render the result.
 - Sort the same list again — no request should fire for "kombucha" this time; it's now served from the `localStorage` cache.
 - Stop the Worker (or point `CATEGORIZE_ENDPOINT` at a bad URL) and sort a list with an unknown item — it should still render, with that item landing in "Uncategorized" instead of the page breaking.
-
----
-
-# Project Goals
-
-The primary goals of this project are:
-
-- Reduce grocery shopping time
-- Eliminate unnecessary walking through stores
-- Improve shopping organization
-- Simplify list management
-- Demonstrate practical automation solving an everyday problem
-
----
-
-# Future Roadmap
-
-## Phase 1 — Core Application ✅
-
-- [x] Grocery list creation
-- [x] Automatic department sorting
-- [x] Responsive interface
-- [x] Item management
-- [x] Department organization
-
----
-
-## Phase 2 — Smarter Categorization
-
-- [x] AI-assisted categorization for items the local dictionary doesn't recognize (via Claude API + Cloudflare Worker)
-- [ ] Expanded grocery database
-- [ ] Better keyword recognition
-- [ ] Multiple category suggestions
-- [ ] Custom department assignments
-- [ ] User-defined categories
-
----
-
-## Phase 3 — Shared Shopping Lists
-
-- [ ] Family accounts
-- [ ] Shared shopping lists
-- [ ] Real-time synchronization
-- [ ] Item completion tracking
-- [ ] Shopping collaboration
-
----
-
-## Phase 4 — Shopping Intelligence
-
-- [ ] Frequently purchased items
-- [ ] Favorite products
-- [ ] Shopping history
-- [ ] Recently purchased items
-- [ ] Purchase suggestions
-
----
-
-## Phase 5 — Store Support
-
-- [ ] Store-specific aisle layouts
-- [ ] Custom aisle ordering
-- [ ] Multiple saved stores
-- [ ] Walmart layouts
-- [ ] Costco layouts
-- [ ] Target layouts
-- [ ] H-E-B layouts
-- [ ] Kroger layouts
-
----
-
-## Phase 6 — AI Integration
-
-Future versions may include an AI shopping assistant capable of:
-
-- Building grocery lists from recipes
-- Suggesting missing ingredients
-- Meal-planning assistance
-- Pantry management
-- Shopping optimization
-- Ingredient substitutions
-- Nutrition recommendations
-- Budget-conscious shopping suggestions
-
----
-
-## Phase 7 — Mobile Applications
-
-- [ ] Android application
-- [ ] iPhone application
-- [ ] Offline synchronization
-- [ ] Voice item entry
-- [ ] Barcode scanning
-- [ ] Camera-based receipt scanning
-
----
-
-## Phase 8 — Premium Features
-
-- [ ] Cloud synchronization
-- [ ] User accounts
-- [ ] Cross-device support
-- [ ] Household management
-- [ ] Grocery spending analytics
-- [ ] Shopping trends
-- [ ] Budget tracking
-
----
-
-# Potential Future Ideas
-
-- Apple Reminders integration
-- Google Tasks synchronization
-- Alexa integration
-- Siri shortcuts
-- Google Assistant support
-- Wear OS support
-- Apple Watch companion app
-- Smart recipe imports
-- Automatic coupon matching
-- Price comparison between stores
-- Loyalty card integration
-- Dark mode
-- Accessibility improvements
 
 ---
 
@@ -327,11 +174,101 @@ To enable AI-assisted categorization for items the local dictionary doesn't reco
 
 ---
 
-# Current Status
+# Roadmap
 
-This project is under active development.
+This project is under active development — completed phases are marked below.
 
-The current version focuses on demonstrating how practical automation can simplify one of the most common everyday tasks while providing a foundation for future smart shopping features.
+## Phase 1 — Core Application ✅
+
+- [x] Grocery list creation
+- [x] Automatic department sorting
+- [x] Responsive interface
+- [x] Item management
+- [x] Department organization
+
+## Phase 2 — Smarter Categorization
+
+- [x] AI-assisted categorization for items the local dictionary doesn't recognize (via Claude API + Cloudflare Worker)
+- [ ] Expanded grocery database
+- [ ] Better keyword recognition
+- [ ] Multiple category suggestions
+- [ ] Custom department assignments
+- [ ] User-defined categories
+
+## Phase 3 — Shared Shopping Lists
+
+- [ ] Family accounts
+- [ ] Shared shopping lists
+- [ ] Real-time synchronization
+- [ ] Item completion tracking
+- [ ] Shopping collaboration
+
+## Phase 4 — Shopping Intelligence
+
+- [ ] Frequently purchased items
+- [ ] Favorite products
+- [ ] Shopping history
+- [ ] Recently purchased items
+- [ ] Purchase suggestions
+
+## Phase 5 — Store Support
+
+- [ ] Store-specific aisle layouts
+- [ ] Custom aisle ordering
+- [ ] Multiple saved stores
+- [ ] Walmart layouts
+- [ ] Costco layouts
+- [ ] Target layouts
+- [ ] H-E-B layouts
+- [ ] Kroger layouts
+
+## Phase 6 — AI Integration
+
+Future versions may include an AI shopping assistant capable of:
+
+- Building grocery lists from recipes
+- Suggesting missing ingredients
+- Meal-planning assistance
+- Pantry management
+- Shopping optimization
+- Ingredient substitutions
+- Nutrition recommendations
+- Budget-conscious shopping suggestions
+
+## Phase 7 — Mobile Applications
+
+- [ ] Android application
+- [ ] iPhone application
+- [ ] Offline synchronization
+- [ ] Voice item entry
+- [ ] Barcode scanning
+- [ ] Camera-based receipt scanning
+
+## Phase 8 — Premium Features
+
+- [ ] Cloud synchronization
+- [ ] User accounts
+- [ ] Cross-device support
+- [ ] Household management
+- [ ] Grocery spending analytics
+- [ ] Shopping trends
+- [ ] Budget tracking
+
+## Potential Future Ideas
+
+- Apple Reminders integration
+- Google Tasks synchronization
+- Alexa integration
+- Siri shortcuts
+- Google Assistant support
+- Wear OS support
+- Apple Watch companion app
+- Smart recipe imports
+- Automatic coupon matching
+- Price comparison between stores
+- Loyalty card integration
+- Dark mode
+- Accessibility improvements
 
 ---
 
@@ -342,4 +279,3 @@ The long-term vision is to evolve Grocery List Organizer into a complete shoppin
 Future versions may combine intelligent grocery organization, AI-assisted meal planning, pantry management, budgeting tools, and real-time collaboration to create a seamless shopping experience for individuals and families.
 
 The goal is not simply to replace a paper shopping list, but to build a smarter system that saves users time, reduces unnecessary effort, and improves everyday routines.
-````
