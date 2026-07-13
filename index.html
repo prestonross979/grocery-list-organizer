@@ -153,6 +153,12 @@ eggs"></textarea>
 </div>
 
 <script>
+// ---- AI categorization proxy (Cloudflare Worker) ----
+// Replace with your deployed Worker URL after running `wrangler deploy`
+// (e.g. "https://aisle-order-proxy.<your-subdomain>.workers.dev/categorize").
+// Defaults to the local `wrangler dev` address for local testing.
+const CATEGORIZE_ENDPOINT = 'http://127.0.0.1:8787/categorize';
+
 // ---- Tier 1: category dictionary & walk order ----
 const CATEGORY_ORDER = ['produce','bakery','deli','meat','dairy','frozen','pantry','household','checkout','other'];
 const CATEGORY_LABEL = {
@@ -203,11 +209,55 @@ function categorize(item){
   return best ? best.cat : 'other';
 }
 
+// ---- Tier 1.5: persistent cache of AI-classified items ----
+// Once Claude classifies an item, it's never sent again from this browser.
+const AI_CACHE_KEY = 'aisleOrder.aiCategoryCache.v1';
+
+function normalizeItem(item){
+  return item
+    .toLowerCase()
+    .trim()
+    // strip a leading quantity/unit ("2 lbs chicken" -> "chicken") so minor
+    // phrasing differences still hit the same cache entry.
+    .replace(/^[\d.\/]+\s*(lbs?|oz|ounces?|kg|g|grams?|dozen|cans?|bottles?|bags?|boxes?|packs?|cups?|pints?|quarts?|gallons?)?\s+/,'')
+    .replace(/\s+/g,' ');
+}
+
+function loadAiCache(){
+  try{ return JSON.parse(localStorage.getItem(AI_CACHE_KEY)) || {}; }
+  catch{ return {}; }
+}
+
+function saveAiCache(cache){
+  try{ localStorage.setItem(AI_CACHE_KEY, JSON.stringify(cache)); }
+  catch{ /* localStorage unavailable (e.g. private browsing quota) — non-fatal */ }
+}
+
+// ---- Tier 2: batched Claude classification for items Tier 1 + cache missed ----
+// Never breaks the app: any network/parsing failure just leaves those items
+// uncategorized ('other') rather than throwing.
+async function classifyUnknowns(items){
+  if(items.length === 0) return {};
+  try{
+    const res = await fetch(CATEGORIZE_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ items })
+    });
+    if(!res.ok) throw new Error('Worker responded with status ' + res.status);
+    const data = await res.json();
+    return (data && data.results) || {};
+  }catch(err){
+    console.warn('Claude categorization unavailable, leaving items uncategorized:', err);
+    return {};
+  }
+}
+
 // ---- sorting & rendering ----
-function sortGeneric(items){
+function groupByCategory(items, itemCategory){
   const groups = {};
   items.forEach(item=>{
-    const cat = categorize(item);
+    const cat = itemCategory[item] || 'other';
     (groups[cat] = groups[cat] || []).push(item);
   });
   return CATEGORY_ORDER.filter(c=>groups[c]).map(c=>({
@@ -215,16 +265,15 @@ function sortGeneric(items){
   }));
 }
 
-document.getElementById('sortBtn').addEventListener('click', ()=>{
-  const raw = document.getElementById('listInput').value;
-  const items = raw.split('\n').map(s=>s.trim()).filter(Boolean);
-  const out = document.getElementById('output');
-  if(items.length===0){
-    out.className='receipt empty';
-    out.textContent='Add at least one item to sort.';
-    return;
-  }
-  const groups = sortGeneric(items);
+function setLoading(isLoading, count){
+  sortBtn.disabled = isLoading;
+  sortBtn.textContent = isLoading
+    ? `Checking ${count} unfamiliar item${count===1?'':'s'} with Claude…`
+    : 'Sort my list';
+}
+
+function renderGroups(items, itemCategory, out){
+  const groups = groupByCategory(items, itemCategory);
 
   out.className='receipt';
   out.innerHTML='';
@@ -257,6 +306,62 @@ document.getElementById('sortBtn').addEventListener('click', ()=>{
     });
     out.appendChild(wrap);
   });
+}
+
+const sortBtn = document.getElementById('sortBtn');
+
+sortBtn.addEventListener('click', async ()=>{
+  const raw = document.getElementById('listInput').value;
+  const items = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const out = document.getElementById('output');
+  if(items.length===0){
+    out.className='receipt empty';
+    out.textContent='Add at least one item to sort.';
+    return;
+  }
+
+  const cache = loadAiCache();
+  const itemCategory = {}; // original item text -> resolved category
+  const unknownOriginals = [];
+  const seenNormalized = new Set();
+
+  items.forEach(item=>{
+    const localCat = categorize(item);
+    if(localCat !== 'other'){
+      itemCategory[item] = localCat; // Tier 1: keyword match, no lookup needed
+      return;
+    }
+    const norm = normalizeItem(item);
+    if(cache[norm]){
+      itemCategory[item] = cache[norm]; // Tier 1.5: previously classified by Claude
+      return;
+    }
+    itemCategory[item] = 'other'; // fallback unless Tier 2 resolves it below
+    if(!seenNormalized.has(norm)){
+      seenNormalized.add(norm);
+      unknownOriginals.push(item); // Tier 2: needs Claude, batched below
+    }
+  });
+
+  if(unknownOriginals.length > 0){
+    setLoading(true, unknownOriginals.length);
+    const results = await classifyUnknowns(unknownOriginals);
+    setLoading(false);
+
+    const updatedCache = {...cache};
+    Object.entries(results).forEach(([originalItem, cat])=>{
+      if(!CATEGORY_ORDER.includes(cat)) return;
+      updatedCache[normalizeItem(originalItem)] = cat;
+    });
+    saveAiCache(updatedCache);
+
+    items.forEach(item=>{
+      const norm = normalizeItem(item);
+      if(updatedCache[norm]) itemCategory[item] = updatedCache[norm];
+    });
+  }
+
+  renderGroups(items, itemCategory, out);
 });
 </script>
 </body>

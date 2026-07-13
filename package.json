@@ -1,0 +1,14 @@
+{
+  "name": "aisle-order-proxy",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Cloudflare Worker proxy that categorizes unknown grocery items via the Claude API for Aisle Order.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secret:put": "wrangler secret put ANTHROPIC_API_KEY"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -70,6 +70,14 @@ The application recognizes grocery items and places them into the appropriate de
 
 This creates a shopping list that more closely follows the natural flow of a grocery store.
 
+Categorization happens in three tiers, in order, so the Claude API is only ever used as a last resort:
+
+1. **Local keyword match** — a built-in dictionary in `index.html` handles common items instantly, for free, with no network call.
+2. **Local cache** — any item Claude has classified before is remembered in the browser's `localStorage` (keyed by a normalized form of the item name), so the same item is never sent to the API twice.
+3. **Claude API (Cloudflare Worker)** — only items that miss both of the above are sent, and every unrecognized item from a single "Sort" click is batched into **one** request rather than one request per item. If the Worker or the API is unreachable, those items simply fall back to "Uncategorized" — the app never breaks.
+
+The app still works with zero setup using just the local keyword dictionary (Tier 1). The AI tier is optional and only activates once the Cloudflare Worker is deployed and `CATEGORIZE_ENDPOINT` in `index.html` points to it — see [AI Setup](#ai-categorization-setup) below.
+
 ---
 
 ## Simple List Management
@@ -118,8 +126,64 @@ The result is a lightweight application that improves a routine task by eliminat
 - HTML5
 - CSS3
 - Vanilla JavaScript (ES6)
+- Cloudflare Workers (serverless proxy for AI categorization)
+- Claude API (Haiku model) for classifying items the local keyword dictionary doesn't recognize
 
-The application is built as a lightweight browser-based web application with no backend or external database requirements.
+The frontend (`index.html`) remains a lightweight browser-based application with no build step and no database. The only backend piece is a small Cloudflare Worker whose sole job is to hold the Anthropic API key server-side and forward batched classification requests — the Worker is optional and only needed if you want AI-assisted categorization.
+
+---
+
+# AI Categorization Setup
+
+AI categorization runs through a Cloudflare Worker so the Anthropic API key is never exposed in the browser. This is the only part of the project that requires installation/deployment steps.
+
+## 1. Install dependencies
+
+```bash
+npm install
+```
+
+## 2. Configure your API key for local development
+
+```bash
+cp .env.example .dev.vars
+# then edit .dev.vars and paste your real key:
+# ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`.dev.vars` is gitignored and is what `wrangler dev` reads locally. Never commit a real key.
+
+## 3. Run the Worker locally
+
+```bash
+npm run dev
+```
+
+This starts the Worker at `http://127.0.0.1:8787`, which matches the default `CATEGORIZE_ENDPOINT` already set in `index.html`. Open `index.html` directly in a browser to test end-to-end against the local Worker.
+
+## 4. Set the production secret
+
+```bash
+npx wrangler login
+npm run secret:put
+```
+
+This prompts for the key and stores it as an encrypted Worker secret — it is never written to disk or committed.
+
+## 5. Deploy the Worker
+
+```bash
+npm run deploy
+```
+
+Wrangler prints your Worker's URL (e.g. `https://aisle-order-proxy.<your-subdomain>.workers.dev`). Update `CATEGORIZE_ENDPOINT` near the top of the `<script>` block in `index.html` to `https://aisle-order-proxy.<your-subdomain>.workers.dev/categorize`, then redeploy/host `index.html` wherever you like (it's still a static file).
+
+## 6. Test it
+
+- Sort a list of only common items (e.g. "milk, bananas, bread") — no network request should fire; everything resolves via the local keyword dictionary.
+- Add an unusual item (e.g. "kombucha") and sort — the button should briefly show a "Checking 1 unfamiliar item with Claude…" loading state, then render the result.
+- Sort the same list again — no request should fire for "kombucha" this time; it's now served from the `localStorage` cache.
+- Stop the Worker (or point `CATEGORIZE_ENDPOINT` at a bad URL) and sort a list with an unknown item — it should still render, with that item landing in "Uncategorized" instead of the page breaking.
 
 ---
 
@@ -149,6 +213,7 @@ The primary goals of this project are:
 
 ## Phase 2 — Smarter Categorization
 
+- [x] AI-assisted categorization for items the local dictionary doesn't recognize (via Claude API + Cloudflare Worker)
 - [ ] Expanded grocery database
 - [ ] Better keyword recognition
 - [ ] Multiple category suggestions
@@ -256,7 +321,9 @@ git clone https://github.com/prestonross979/grocery-list-organizer.git
 
 Open `index.html` in any modern web browser.
 
-No installation or external dependencies are required.
+No installation or external dependencies are required for local keyword-based sorting.
+
+To enable AI-assisted categorization for items the local dictionary doesn't recognize, see [AI Categorization Setup](#ai-categorization-setup).
 
 ---
 
